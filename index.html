@@ -38,7 +38,6 @@ main{flex:1;padding:14px 20px 90px}
 .habit{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin-bottom:10px;transition:border-color .2s, background .2s}
 .habit.done{background:var(--green-soft);border-color:#bfe0d0}
 .habit.failed{background:var(--red-soft);border-color:#efc7bd}
-.habit.skipped{background:var(--amber-soft);border-color:#ecd9b3;opacity:.9}
 .h-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
 .h-name{font-family:'Sora',sans-serif;font-size:15px;font-weight:600}
 .habit.done .h-name{color:var(--green-deep)}
@@ -48,14 +47,11 @@ main{flex:1;padding:14px 20px 90px}
 .badge{font-size:11px;font-weight:600;padding:4px 10px;border-radius:999px;white-space:nowrap;cursor:pointer;user-select:none}
 .badge.done{background:var(--green);color:#fff}
 .badge.failed{background:var(--red);color:#fff}
-.badge.skipped{background:var(--amber);color:#fff}
 .h-actions{display:flex;gap:8px;margin-top:12px}
 .btn{flex:1;border:1px solid var(--line);background:#fff;border-radius:10px;padding:9px 0;font-family:'Inter',sans-serif;font-size:13px;font-weight:600;cursor:pointer;transition:all .12s;color:var(--ink)}
 .btn:active{transform:scale(.97)}
 .btn.b-done:hover{background:var(--green);border-color:var(--green);color:#fff}
 .btn.b-fail:hover{background:var(--red);border-color:var(--red);color:#fff}
-.btn.b-skip{flex:.6;color:var(--ink-soft)}
-.btn.b-skip:hover{background:var(--amber);border-color:var(--amber);color:#fff}
 .note-row{margin-top:10px}
 .note-input{width:100%;border:1px solid var(--line);border-radius:10px;padding:8px 12px;font-family:'Inter',sans-serif;font-size:13px;background:#fff;color:var(--ink)}
 .note-input:focus{outline:none;border-color:var(--green)}
@@ -103,6 +99,19 @@ nav{position:fixed;bottom:0;left:0;right:0;background:var(--card);border-top:1px
 .day-pick button.on{background:var(--ink);border-color:var(--ink);color:#fff}
 .save-btn{width:100%;border:0;background:var(--green);color:#fff;border-radius:12px;padding:13px 0;font-family:'Sora',sans-serif;font-size:14px;font-weight:600;cursor:pointer;margin-top:6px}
 .hidden{display:none}
+.evo{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.evo.up{background:var(--green-soft);color:var(--green-deep)}
+.evo.down{background:var(--red-soft);color:var(--red-deep)}
+.evo-box{margin-top:10px;background:var(--green-soft);border:1px solid #bfe0d0;border-radius:10px;padding:9px 12px;display:flex;flex-direction:column;gap:5px}
+.evo-line{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;color:var(--green-deep)}
+.change-log{margin-top:8px;font-size:11.5px;color:var(--ink-faint);line-height:1.7}
+.evo-hero{background:var(--green-deep);border-radius:var(--radius);padding:6px 16px;margin-bottom:6px}
+.evo-hero-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.12)}
+.evo-hero-row:last-child{border-bottom:0}
+.evo-hero-name{font-family:'Sora',sans-serif;font-size:14px;font-weight:600;color:#fff}
+.evo-hero-detail{font-size:12px;color:rgba(255,255,255,.75);margin-top:2px}
+.evo-hero .evo.up{background:rgba(255,255,255,.15);color:#9fe8c4}
+.evo-hero .evo.down{background:rgba(255,255,255,.15);color:#ffb3a3}
 .chips{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 8px}
 .chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 13px;font-family:'Inter',sans-serif;font-size:12px;font-weight:600;color:var(--ink-soft);cursor:pointer}
 .chip.on{background:var(--ink);border-color:var(--ink);color:#fff}
@@ -200,7 +209,9 @@ function persist(){
 }
 let loaded = false;
 
-const todayKey = today.toISOString().slice(0,10);
+// Local-timezone date key (Jos = Brazil, San = Indonesia — each device uses its own local day)
+function dateKey(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+const todayKey = dateKey(today);
 const $ = s => document.querySelector(s);
 
 function entriesFor(h){ return state.entries[h.id] || (state.entries[h.id]={}); }
@@ -219,28 +230,62 @@ function setNote(h,note){
 }
 
 function streak(h){
-  let s=0; const d=new Date();
+  let s=0;
   const t = todayEntry(h);
   if (t && t.status==='done') s++;
   for(let i=1;i<365;i++){
-    d.setDate(today.getDate()-i);
+    const d = new Date(); d.setDate(today.getDate()-i);
     if(!h.days.includes(d.getDay())) continue;
-    const e = entriesFor(h)[d.toISOString().slice(0,10)];
+    const e = entriesFor(h)[dateKey(d)];
     if(e && e.status==='done') s++;
-    else if(e && e.status==='skipped') continue;
     else break;
   }
   return s;
 }
 function completion(h){
   let done=0,total=0;
-  for(const [k,e] of Object.entries(entriesFor(h))){
-    if(e.status==='skipped') continue;
+  for(const e of Object.values(entriesFor(h))){
     total++; if(e.status==='done') done++;
   }
   return total? Math.round(done/total*100) : 0;
 }
 function personHabits(pid){ return state.habits.filter(h=>h.owner===pid); }
+
+// ---------- evolution tracking ----------
+function parseNum(goal){ const m = String(goal).match(/(\d+(?:[.,]\d+)?)/); return m? parseFloat(m[1].replace(',','.')) : null; }
+function evolution(h){
+  const out = {};
+  const a = parseNum(h.initial?.goal), b = parseNum(h.goal);
+  if(a!==null && b!==null && a!==b) out.goal = {from:h.initial.goal, to:h.goal, pct: Math.round((b-a)/a*100)};
+  else if(h.initial && h.initial.goal!==h.goal) out.goal = {from:h.initial.goal, to:h.goal, pct:null};
+  const d0 = h.initial?.daysCount, d1 = h.days.length;
+  if(d0 && d0!==d1) out.days = {from:d0, to:d1, pct: Math.round((d1-d0)/d0*100)};
+  return out;
+}
+function pctBadge(pct){
+  if(pct===null || pct===undefined) return '';
+  const up = pct>0;
+  return `<span class="evo ${up?'up':'down'}">${up?'▲':'▼'} ${up?'+':''}${pct}%</span>`;
+}
+
+// migrate old data + apply auto-fail to past unmarked scheduled days
+function migrateAndAutofail(){
+  for(const h of state.habits){
+    if(!h.createdAt) h.createdAt = todayKey;
+    if(!h.initial) h.initial = {goal:h.goal, daysCount:h.days.length};
+    if(!h.changes) h.changes = [];
+    // drop legacy 'skipped' entries
+    for(const [k,e] of Object.entries(entriesFor(h))) if(e.status==='skipped') delete state.entries[h.id][k];
+    // auto-fail: every scheduled day since creation, before today, with no entry
+    const start = new Date(h.createdAt+'T12:00:00');
+    const d = new Date(start);
+    for(let guard=0; guard<400 && dateKey(d)<todayKey; guard++, d.setDate(d.getDate()+1)){
+      const k = dateKey(d);
+      if(!h.days.includes(d.getDay())) continue;
+      if(!entriesFor(h)[k]) state.entries[h.id][k] = {status:'failed', note:'', auto:true};
+    }
+  }
+}
 
 // ---------- render ----------
 function render(){
@@ -279,7 +324,8 @@ function renderToday(){
     const e = todayEntry(h);
     const st = e?.status;
     const sk = streak(h);
-    const meta = `<div class="h-meta">${h.goal}${sk?` · <span class="streak">🔥 ${sk}-day streak</span>`:''}</div>`;
+    const evo = evolution(h);
+    const meta = `<div class="h-meta">${h.goal}${evo.goal?` ${pctBadge(evo.goal.pct)}`:''}${sk?` · <span class="streak">🔥 ${sk}-day streak</span>`:''}</div>`;
     if(st){
       const label = st[0].toUpperCase()+st.slice(1);
       return `<div class="habit ${st}">
@@ -294,7 +340,6 @@ function renderToday(){
       <div class="h-actions">
         <button class="btn b-done" onclick="mark('${h.id}','done')">✓ Done</button>
         <button class="btn b-fail" onclick="mark('${h.id}','failed')">✕ Failed</button>
-        <button class="btn b-skip" onclick="mark('${h.id}','skipped')">Skip</button>
       </div>
       <div class="note-row"><input class="note-input" placeholder="Add a note about today..."
         value="${e?.note||''}" onchange="noteChange('${h.id}',this.value)"></div>
@@ -308,19 +353,29 @@ window.noteChange = (id,v)=>{ const h=state.habits.find(x=>x.id===id); setNote(h
 function renderHabits(){
   const hs = personHabits(state.current);
   $('#viewHabits').innerHTML = `<div class="section-title">All habits — ${state.people.find(p=>p.id===state.current).name}</div>` +
-    (hs.length? hs.map(h=>`
+    (hs.length? hs.map(h=>{
+      const evo = evolution(h);
+      const evoHtml = (evo.goal||evo.days)? `
+        <div class="evo-box">
+          ${evo.goal?`<div class="evo-line"><span>Goal: <b>${evo.goal.from}</b> → <b>${evo.goal.to}</b></span>${pctBadge(evo.goal.pct)}</div>`:''}
+          ${evo.days?`<div class="evo-line"><span>Days/week: <b>${evo.days.from}</b> → <b>${evo.days.to}</b></span>${pctBadge(evo.days.pct)}</div>`:''}
+        </div>` : '';
+      const log = (h.changes&&h.changes.length)? `<div class="change-log">${h.changes.slice(-4).reverse().map(c=>
+        `<div>${new Date(c.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})} — ${c.field==='goal'?'goal':'days/week'}: ${c.from} → ${c.to}</div>`).join('')}</div>` : '';
+      return `
     <div class="habit">
       <div class="h-top"><div><div class="h-name">${h.name}</div>
-      <div class="h-meta">${h.goal} · ${completion(h)}% completion</div></div>
+      <div class="h-meta">${h.goal} · ${completion(h)}% completion · since ${new Date(h.createdAt+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})}</div></div>
       <div style="display:flex;gap:6px">
         <button class="icon-btn" title="Edit" onclick="editHabit('${h.id}')">✎</button>
         <button class="icon-btn danger" title="Delete" onclick="deleteHabit('${h.id}')">🗑</button>
       </div></div>
+      ${evoHtml}${log}
       <div class="days">${DAYS.map((d,i)=>`<div class="day-dot ${h.days.includes(i)?'on':''}">${d[0]}</div>`).join('')}</div>
-    </div>`).join('') : `<div class="empty">No habits yet. Tap + to add one.</div>`);
+    </div>`;}).join('') : `<div class="empty">No habits yet. Tap + to add one.</div>`);
 }
 
-const STATUS_LABEL = {done:'Done', failed:'Failed', skipped:'Skipped'};
+const STATUS_LABEL = {done:'Done', failed:'Failed'};
 function renderHistory(){
   const days = state.histPeriod==='day'?1 : state.histPeriod==='week'?7 : 30;
   const cutoff = new Date(); cutoff.setDate(cutoff.getDate()-(days-1)); cutoff.setHours(0,0,0,0);
@@ -337,8 +392,8 @@ function renderHistory(){
   const dates = Object.keys(byDate).sort().reverse();
   const chip = (id,label,active,fn)=>`<button class="chip ${active?'on':''}" onclick="${fn}('${id}')">${label}</button>`;
   const periodChips = ['day','week','month'].map(p=>chip(p, p==='day'?'Today':p==='week'?'Last 7 days':'Last 30 days', state.histPeriod===p,'histPeriod')).join('');
-  const filterChips = ['all','done','failed','skipped'].map(f=>chip(f, f==='all'?'All':STATUS_LABEL[f], state.histFilter===f,'histFilter')).join('');
-  const counts = {done:0,failed:0,skipped:0};
+  const filterChips = ['all','done','failed'].map(f=>chip(f, f==='all'?'All':STATUS_LABEL[f], state.histFilter===f,'histFilter')).join('');
+  const counts = {done:0,failed:0};
   dates.forEach(k=>byDate[k].forEach(x=>counts[x.entry.status]!==undefined && counts[x.entry.status]++));
   const body = dates.length ? dates.map(k=>{
     const d = new Date(k+'T12:00:00');
@@ -346,7 +401,7 @@ function renderHistory(){
     return `<div class="section-title">${label}</div>` + byDate[k].map(({habit,entry})=>`
       <div class="habit ${entry.status}" style="padding:11px 14px">
         <div class="h-top"><div><div class="h-name" style="font-size:14px">${habit.name}</div>
-        <div class="h-meta">${habit.goal}</div></div>
+        <div class="h-meta">${habit.goal}${entry.auto?' · not marked (auto)':''}</div></div>
         <span class="badge ${entry.status}">${STATUS_LABEL[entry.status]||entry.status}</span></div>
         ${entry.note?`<div class="note-view">📝 ${entry.note}</div>`:''}
       </div>`).join('');
@@ -354,7 +409,7 @@ function renderHistory(){
   $('#viewHistory').innerHTML = `
     <div class="chips">${periodChips}</div>
     <div class="chips">${filterChips}</div>
-    <div class="hist-summary">✓ ${counts.done} done · ✕ ${counts.failed} failed · ${counts.skipped} skipped</div>
+    <div class="hist-summary">✓ ${counts.done} done · ✕ ${counts.failed} failed</div>
     ${body}`;
 }
 window.histPeriod = p =>{ state.histPeriod=p; render(); };
@@ -382,7 +437,17 @@ function renderMetrics(){
       <div class="s">🔥 best streak: ${c.best} days</div>
     </div>`).join('');
   const top = hs.slice().sort((a,b)=>completion(b)-completion(a))[0];
+  const evoRows = hs.map(h=>({h, e:evolution(h)})).filter(x=>x.e.goal||x.e.days);
+  const evoSection = evoRows.length? `
+    <div class="section-title">📈 Your evolution</div>
+    <div class="evo-hero">${evoRows.map(({h,e})=>`
+      <div class="evo-hero-row">
+        <div><div class="evo-hero-name">${h.name}</div>
+        <div class="evo-hero-detail">${e.goal?`${e.goal.from} → <b>${e.goal.to}</b>`:''}${e.goal&&e.days?' · ':''}${e.days?`${e.days.from} → <b>${e.days.to}</b> days/wk`:''}</div></div>
+        <div style="display:flex;gap:5px">${e.goal?pctBadge(e.goal.pct):''}${e.days?pctBadge(e.days.pct):''}</div>
+      </div>`).join('')}</div>` : '';
   $('#viewMetrics').innerHTML = `
+    ${evoSection}
     <div class="section-title">Per habit — ${me.name}</div>${bars || '<div class="empty">No data yet.</div>'}
     <div class="section-title">Head to head</div>
     <div class="compare">${compHtml}</div>
@@ -430,9 +495,13 @@ $('#fSave').onclick = ()=>{
   if(!name) return;
   if(editingId){
     const h = state.habits.find(x=>x.id===editingId);
-    h.name = name; h.goal = goal||'Daily'; h.days = [...pickedDays];
+    const newGoal = goal||'Daily';
+    if(h.goal !== newGoal) h.changes.push({date:todayKey, field:'goal', from:h.goal, to:newGoal});
+    if(h.days.length !== pickedDays.size) h.changes.push({date:todayKey, field:'days', from:h.days.length, to:pickedDays.size});
+    h.name = name; h.goal = newGoal; h.days = [...pickedDays];
   } else {
-    state.habits.push({id:'h'+Date.now(), owner:state.current, name, goal:goal||'Daily', days:[...pickedDays]});
+    state.habits.push({id:'h'+Date.now(), owner:state.current, name, goal:goal||'Daily', days:[...pickedDays],
+      createdAt: todayKey, initial:{goal:goal||'Daily', daysCount:pickedDays.size}, changes:[]});
   }
   editingId = null;
   $('#modalBg').classList.remove('open');
@@ -449,11 +518,12 @@ async function loadRemote(){
 }
 async function init(){
   loaded = await loadRemote();
+  migrateAndAutofail();
   render();
 }
 document.addEventListener('visibilitychange', async ()=>{
   if(document.visibilityState==='visible'){
-    if(await loadRemote()) render();
+    if(await loadRemote()){ migrateAndAutofail(); render(); }
   }
 });
 init();
