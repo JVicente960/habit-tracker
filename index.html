@@ -103,6 +103,10 @@ nav{position:fixed;bottom:0;left:0;right:0;background:var(--card);border-top:1px
 .day-pick button.on{background:var(--ink);border-color:var(--ink);color:#fff}
 .save-btn{width:100%;border:0;background:var(--green);color:#fff;border-radius:12px;padding:13px 0;font-family:'Sora',sans-serif;font-size:14px;font-weight:600;cursor:pointer;margin-top:6px}
 .hidden{display:none}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 8px}
+.chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 13px;font-family:'Inter',sans-serif;font-size:12px;font-weight:600;color:var(--ink-soft);cursor:pointer}
+.chip.on{background:var(--ink);border-color:var(--ink);color:#fff}
+.hist-summary{font-size:12.5px;color:var(--ink-soft);margin:2px 0 4px}
 .icon-btn{width:32px;height:32px;border:1px solid var(--line);background:#fff;border-radius:9px;cursor:pointer;font-size:14px;color:var(--ink-soft);display:flex;align-items:center;justify-content:center}
 .icon-btn:hover{border-color:var(--ink);color:var(--ink)}
 .icon-btn.danger:hover{border-color:var(--red);color:var(--red)}
@@ -126,6 +130,7 @@ nav{position:fixed;bottom:0;left:0;right:0;background:var(--card);border-top:1px
 <main>
   <div id="viewToday"></div>
   <div id="viewHabits" class="hidden"></div>
+  <div id="viewHistory" class="hidden"></div>
   <div id="viewMetrics" class="hidden"></div>
 </main>
 
@@ -139,6 +144,10 @@ nav{position:fixed;bottom:0;left:0;right:0;background:var(--card);border-top:1px
   <button class="tab" data-tab="habits">
     <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></svg>
     Habits
+  </button>
+  <button class="tab" data-tab="history">
+    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+    History
   </button>
   <button class="tab" data-tab="metrics">
     <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
@@ -172,15 +181,11 @@ const state = {
   people: [{id:'p1',name:'Jos'},{id:'p2',name:'San'}],
   current: 'p1',
   tab: 'today',
-  habits: [
-    {id:'h1',owner:'p1',name:'Read a book',goal:'10 min a day',days:[1,2,3,4,5,6,0]},
-    {id:'h2',owner:'p1',name:'Workout',goal:'30 min',days:[1,3,5]},
-    {id:'h3',owner:'p1',name:'Meditate',goal:'10 min',days:[1,2,3,4,5]},
-    {id:'h4',owner:'p2',name:'Drink water',goal:'2 liters',days:[0,1,2,3,4,5,6]},
-    {id:'h5',owner:'p2',name:'Study English',goal:'20 min',days:[1,2,3,4,5]},
-  ],
+  habits: [],
   // entries[habitId] = { '2026-07-13': {status:'done',note:''} , ... }
-  entries: {}
+  entries: {},
+  histPeriod: 'week',
+  histFilter: 'all'
 };
 
 // ---------- persistence (Cloudflare KV via /api/data) ----------
@@ -194,22 +199,6 @@ function persist(){
   }, 400);
 }
 let loaded = false;
-
-// seed the last 14 days with plausible history for the demo (first run only)
-function seed(){
-  const rates = {h1:.9,h2:.7,h3:.55,h4:.85,h5:.8};
-  for (const h of state.habits){
-    state.entries[h.id] = {};
-    for (let i=14;i>=1;i--){
-      const d = new Date(); d.setDate(d.getDate()-i);
-      if (!h.days.includes(d.getDay())) continue;
-      const key = d.toISOString().slice(0,10);
-      const r = Math.random();
-      const status = r < rates[h.id] ? 'done' : (r < rates[h.id]+0.07 ? 'skipped' : 'failed');
-      state.entries[h.id][key] = {status, note:''};
-    }
-  }
-}
 
 const todayKey = today.toISOString().slice(0,10);
 const $ = s => document.querySelector(s);
@@ -256,9 +245,10 @@ function personHabits(pid){ return state.habits.filter(h=>h.owner===pid); }
 // ---------- render ----------
 function render(){
   persist();
-  renderPeople(); renderStats(); renderToday(); renderHabits(); renderMetrics();
+  renderPeople(); renderStats(); renderToday(); renderHabits(); renderHistory(); renderMetrics();
   $('#viewToday').classList.toggle('hidden', state.tab!=='today');
   $('#viewHabits').classList.toggle('hidden', state.tab!=='habits');
+  $('#viewHistory').classList.toggle('hidden', state.tab!=='history');
   $('#viewMetrics').classList.toggle('hidden', state.tab!=='metrics');
   $('#fabAdd').style.display = state.tab==='habits' ? 'block' : 'none';
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.dataset.tab===state.tab));
@@ -329,6 +319,46 @@ function renderHabits(){
       <div class="days">${DAYS.map((d,i)=>`<div class="day-dot ${h.days.includes(i)?'on':''}">${d[0]}</div>`).join('')}</div>
     </div>`).join('') : `<div class="empty">No habits yet. Tap + to add one.</div>`);
 }
+
+const STATUS_LABEL = {done:'Done', failed:'Failed', skipped:'Skipped'};
+function renderHistory(){
+  const days = state.histPeriod==='day'?1 : state.histPeriod==='week'?7 : 30;
+  const cutoff = new Date(); cutoff.setDate(cutoff.getDate()-(days-1)); cutoff.setHours(0,0,0,0);
+  const hs = personHabits(state.current);
+  const byDate = {};
+  for(const h of hs){
+    for(const [k,e] of Object.entries(entriesFor(h))){
+      const d = new Date(k+'T12:00:00');
+      if(d < cutoff || d > today) continue;
+      if(state.histFilter!=='all' && e.status!==state.histFilter) continue;
+      (byDate[k] = byDate[k]||[]).push({habit:h, entry:e});
+    }
+  }
+  const dates = Object.keys(byDate).sort().reverse();
+  const chip = (id,label,active,fn)=>`<button class="chip ${active?'on':''}" onclick="${fn}('${id}')">${label}</button>`;
+  const periodChips = ['day','week','month'].map(p=>chip(p, p==='day'?'Today':p==='week'?'Last 7 days':'Last 30 days', state.histPeriod===p,'histPeriod')).join('');
+  const filterChips = ['all','done','failed','skipped'].map(f=>chip(f, f==='all'?'All':STATUS_LABEL[f], state.histFilter===f,'histFilter')).join('');
+  const counts = {done:0,failed:0,skipped:0};
+  dates.forEach(k=>byDate[k].forEach(x=>counts[x.entry.status]!==undefined && counts[x.entry.status]++));
+  const body = dates.length ? dates.map(k=>{
+    const d = new Date(k+'T12:00:00');
+    const label = k===todayKey ? 'Today' : d.toLocaleDateString('en-US',{weekday:'short', month:'short', day:'numeric'});
+    return `<div class="section-title">${label}</div>` + byDate[k].map(({habit,entry})=>`
+      <div class="habit ${entry.status}" style="padding:11px 14px">
+        <div class="h-top"><div><div class="h-name" style="font-size:14px">${habit.name}</div>
+        <div class="h-meta">${habit.goal}</div></div>
+        <span class="badge ${entry.status}">${STATUS_LABEL[entry.status]||entry.status}</span></div>
+        ${entry.note?`<div class="note-view">📝 ${entry.note}</div>`:''}
+      </div>`).join('');
+  }).join('') : `<div class="empty">Nothing recorded in this period${state.histFilter!=='all'?' with this filter':''}.</div>`;
+  $('#viewHistory').innerHTML = `
+    <div class="chips">${periodChips}</div>
+    <div class="chips">${filterChips}</div>
+    <div class="hist-summary">✓ ${counts.done} done · ✕ ${counts.failed} failed · ${counts.skipped} skipped</div>
+    ${body}`;
+}
+window.histPeriod = p =>{ state.histPeriod=p; render(); };
+window.histFilter = f =>{ state.histFilter=f; render(); };
 
 function renderMetrics(){
   const me = state.people.find(p=>p.id===state.current);
@@ -419,7 +449,6 @@ async function loadRemote(){
 }
 async function init(){
   loaded = await loadRemote();
-  if(!loaded){ seed(); }
   render();
 }
 document.addEventListener('visibilitychange', async ()=>{
