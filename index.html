@@ -293,10 +293,12 @@ function migrateAndAutofail(){
 function render(){
   persist();
   renderPeople(); renderStats(); renderToday(); renderHabits(); renderHistory(); renderMetrics();
-  $('#viewToday').classList.toggle('hidden', state.tab!=='today');
-  $('#viewHabits').classList.toggle('hidden', state.tab!=='habits');
-  $('#viewHistory').classList.toggle('hidden', state.tab!=='history');
-  $('#viewMetrics').classList.toggle('hidden', state.tab!=='metrics');
+  ['Today','Habits','History','Metrics'].forEach(name=>{
+    const v = $('#view'+name);
+    v.classList.toggle('hidden', state.tab !== name.toLowerCase());
+    // wipe any inline transform/opacity a mid-swipe may have left behind
+    if(state.tab === name.toLowerCase()){ v.style.transform=''; v.style.opacity=''; }
+  });
   $('#fabAdd').style.display = state.tab==='habits' ? 'block' : 'none';
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.dataset.tab===state.tab));
 }
@@ -463,80 +465,79 @@ document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{ state.tab=t.dataset
 
 // ---------- swipe left/right to change tabs (mobile only) ----------
 // Follows the finger in real time; snaps to the neighbouring tab on release.
-(function(){
-  if(!window.matchMedia('(pointer:coarse)').matches) return; // touch devices only
-  const area = document.querySelector('main');
-  const width = () => area.clientWidth || window.innerWidth;
-  let x0=null, y0=null, dragging=false, decided=false, cur=null;
+function setupSwipe(){
+  try{
+    if(!('matchMedia' in window) || !window.matchMedia('(pointer:coarse)').matches) return; // touch devices only
+    const area = document.querySelector('main');
+    if(!area) return;
+    const width = () => area.clientWidth || window.innerWidth;
+    let x0=null, y0=null, dragging=false, decided=false, cur=null;
 
-  function currentView(){ return $('#view'+state.tab.charAt(0).toUpperCase()+state.tab.slice(1)); }
-  function neighbourAllowed(dir){ // dir: -1 (finger right / prev), +1 (finger left / next)
-    const ni = TAB_ORDER.indexOf(state.tab) + dir;
-    return ni>=0 && ni<TAB_ORDER.length;
-  }
-
-  area.addEventListener('touchstart', e=>{
-    if(e.touches.length!==1) return;
-    x0 = e.touches[0].clientX; y0 = e.touches[0].clientY;
-    dragging=true; decided=false; cur=currentView();
-    if(cur) cur.style.transition='none';
-  }, {passive:true});
-
-  area.addEventListener('touchmove', e=>{
-    if(!dragging || x0===null) return;
-    const dx = e.touches[0].clientX - x0;
-    const dy = e.touches[0].clientY - y0;
-    if(!decided){
-      // lock direction on first meaningful move
-      if(Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
-      decided = true;
-      dragging = Math.abs(dx) > Math.abs(dy); // only take over if clearly horizontal
-      if(!dragging && cur){ cur.style.transition=''; cur.style.transform=''; }
+    function currentView(){ return $('#view'+state.tab.charAt(0).toUpperCase()+state.tab.slice(1)); }
+    function neighbourAllowed(dir){
+      const ni = TAB_ORDER.indexOf(state.tab) + dir;
+      return ni>=0 && ni<TAB_ORDER.length;
     }
-    if(!dragging || !cur) return;
-    // resistance when there is no tab to go to on that side
-    const dir = dx<0 ? 1 : -1;
-    const eff = neighbourAllowed(dir) ? dx : dx*0.28;
-    cur.style.transform = `translateX(${eff}px)`;
-    cur.style.opacity = String(Math.max(0.55, 1 - Math.abs(eff)/(width()*1.4)));
-  }, {passive:true});
 
-  area.addEventListener('touchend', e=>{
-    if(!dragging || x0===null){ x0=null; return; }
-    const dx = e.changedTouches[0].clientX - x0;
-    dragging=false; x0=null; y0=null;
-    if(!cur){ return; }
-    const dir = dx<0 ? 1 : -1;
-    const passed = Math.abs(dx) > width()*0.28 && neighbourAllowed(dir);
-    const leaving = cur;
-    if(passed){
-      // slide the old view fully out, then swap and slide the new one in
-      leaving.style.transition='transform .18s ease, opacity .18s ease';
-      leaving.style.transform=`translateX(${dir<0?width():-width()}px)`;
-      leaving.style.opacity='0';
-      state.tab = TAB_ORDER[TAB_ORDER.indexOf(state.tab)+dir];
-      setTimeout(()=>{
-        leaving.style.transition=''; leaving.style.transform=''; leaving.style.opacity='';
-        render();
-        const nv = currentView();
-        if(nv){
-          nv.style.transition='none';
-          nv.style.transform=`translateX(${dir<0?-width():width()}px)`;
-          nv.style.opacity='0';
-          void nv.offsetWidth;
-          nv.style.transition='transform .2s ease, opacity .2s ease';
-          nv.style.transform='translateX(0)'; nv.style.opacity='1';
-          setTimeout(()=>{ nv.style.transition=''; nv.style.transform=''; nv.style.opacity=''; }, 220);
-        }
-      }, 150);
-    } else {
-      // snap back to place
-      leaving.style.transition='transform .2s ease, opacity .2s ease';
-      leaving.style.transform='translateX(0)'; leaving.style.opacity='1';
-      setTimeout(()=>{ leaving.style.transition=''; leaving.style.transform=''; leaving.style.opacity=''; }, 210);
-    }
-  }, {passive:true});
-})();
+    area.addEventListener('touchstart', e=>{
+      if(e.touches.length!==1) return;
+      x0 = e.touches[0].clientX; y0 = e.touches[0].clientY;
+      dragging=true; decided=false; cur=currentView();
+      if(cur) cur.style.transition='none';
+    }, {passive:true});
+
+    area.addEventListener('touchmove', e=>{
+      if(!dragging || x0===null) return;
+      const dx = e.touches[0].clientX - x0;
+      const dy = e.touches[0].clientY - y0;
+      if(!decided){
+        if(Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+        decided = true;
+        dragging = Math.abs(dx) > Math.abs(dy);
+        if(!dragging && cur){ cur.style.transition=''; cur.style.transform=''; cur.style.opacity=''; }
+      }
+      if(!dragging || !cur) return;
+      const dir = dx<0 ? 1 : -1;
+      const eff = neighbourAllowed(dir) ? dx : dx*0.28;
+      cur.style.transform = `translateX(${eff}px)`;
+      cur.style.opacity = String(Math.max(0.55, 1 - Math.abs(eff)/(width()*1.4)));
+    }, {passive:true});
+
+    area.addEventListener('touchend', e=>{
+      if(!dragging || x0===null){ x0=null; return; }
+      const dx = e.changedTouches[0].clientX - x0;
+      dragging=false; x0=null; y0=null;
+      if(!cur){ return; }
+      const dir = dx<0 ? 1 : -1;
+      const passed = Math.abs(dx) > width()*0.28 && neighbourAllowed(dir);
+      const leaving = cur; cur=null;
+      if(passed){
+        leaving.style.transition='transform .18s ease, opacity .18s ease';
+        leaving.style.transform=`translateX(${dir<0?width():-width()}px)`;
+        leaving.style.opacity='0';
+        state.tab = TAB_ORDER[TAB_ORDER.indexOf(state.tab)+dir];
+        setTimeout(()=>{
+          leaving.style.transition=''; leaving.style.transform=''; leaving.style.opacity='';
+          render();
+          const nv = currentView();
+          if(nv){
+            nv.style.transition='none';
+            nv.style.transform=`translateX(${dir<0?-width():width()}px)`;
+            nv.style.opacity='0';
+            void nv.offsetWidth;
+            nv.style.transition='transform .2s ease, opacity .2s ease';
+            nv.style.transform='translateX(0)'; nv.style.opacity='1';
+            setTimeout(()=>{ nv.style.transition=''; nv.style.transform=''; nv.style.opacity=''; }, 220);
+          }
+        }, 150);
+      } else {
+        leaving.style.transition='transform .2s ease, opacity .2s ease';
+        leaving.style.transform='translateX(0)'; leaving.style.opacity='1';
+        setTimeout(()=>{ leaving.style.transition=''; leaving.style.transform=''; leaving.style.opacity=''; }, 210);
+      }
+    }, {passive:true});
+  }catch(err){ /* swipe is a nice-to-have; never let it break the app */ }
+}
 
 // ---------- add / edit habit modal ----------
 let pickedDays = new Set([1,2,3,4,5]);
@@ -564,3 +565,50 @@ window.editHabit = id =>{
 };
 window.deleteHabit = id =>{
   const h = state.habits.find(x=>x.id===id); if(!h) return;
+  if(!confirm(`Delete "${h.name}" and all its history?`)) return;
+  state.habits = state.habits.filter(x=>x.id!==id);
+  delete state.entries[id];
+  render();
+};
+$('#modalBg').onclick = e =>{ if(e.target.id==='modalBg') $('#modalBg').classList.remove('open'); };
+$('#fSave').onclick = ()=>{
+  const name = $('#fName').value.trim(), goal = $('#fGoal').value.trim();
+  if(!name) return;
+  if(editingId){
+    const h = state.habits.find(x=>x.id===editingId);
+    const newGoal = goal||'Daily';
+    if(h.goal !== newGoal) h.changes.push({date:todayKey, field:'goal', from:h.goal, to:newGoal});
+    if(h.days.length !== pickedDays.size) h.changes.push({date:todayKey, field:'days', from:h.days.length, to:pickedDays.size});
+    h.name = name; h.goal = newGoal; h.days = [...pickedDays];
+  } else {
+    state.habits.push({id:'h'+Date.now(), owner:state.current, name, goal:goal||'Daily', days:[...pickedDays],
+      createdAt: todayKey, initial:{goal:goal||'Daily', daysCount:pickedDays.size}, changes:[]});
+  }
+  editingId = null;
+  $('#modalBg').classList.remove('open');
+  state.tab='habits'; render();
+};
+
+async function loadRemote(){
+  try{
+    const res = await fetch('/api/data');
+    const saved = await res.json();
+    if(saved && saved.habits){ state.habits = saved.habits; state.entries = saved.entries || {}; return true; }
+  }catch(e){}
+  return false;
+}
+async function init(){
+  loaded = await loadRemote();
+  migrateAndAutofail();
+  render();
+  setupSwipe();
+}
+document.addEventListener('visibilitychange', async ()=>{
+  if(document.visibilityState==='visible'){
+    if(await loadRemote()){ migrateAndAutofail(); render(); }
+  }
+});
+init();
+</script>
+</body>
+</html>
