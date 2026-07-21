@@ -99,6 +99,9 @@ nav{position:fixed;bottom:0;left:0;right:0;background:var(--card);border-top:1px
 .day-pick button.on{background:var(--ink);border-color:var(--ink);color:#fff}
 .save-btn{width:100%;border:0;background:var(--green);color:#fff;border-radius:12px;padding:13px 0;font-family:'Sora',sans-serif;font-size:14px;font-weight:600;cursor:pointer;margin-top:6px}
 .hidden{display:none}
+@keyframes slideL{from{opacity:.4;transform:translateX(22px)}to{opacity:1;transform:translateX(0)}}
+@keyframes slideR{from{opacity:.4;transform:translateX(-22px)}to{opacity:1;transform:translateX(0)}}
+main{overflow-x:hidden}
 .evo{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap}
 .evo.up{background:var(--green-soft);color:var(--green-deep)}
 .evo.down{background:var(--red-soft);color:var(--red-deep)}
@@ -456,7 +459,38 @@ function renderMetrics(){
 }
 
 // ---------- tabs ----------
+const TAB_ORDER = ['today','habits','history','metrics'];
 document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{ state.tab=t.dataset.tab; render(); });
+
+// ---------- swipe left/right to change tabs (mobile only) ----------
+(function(){
+  if(!window.matchMedia('(pointer:coarse)').matches) return; // touch devices only
+  const area = document.querySelector('main');
+  let x0=null, y0=null, active=false;
+  area.addEventListener('touchstart', e=>{
+    if(e.touches.length!==1) return;
+    x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; active=true;
+  }, {passive:true});
+  area.addEventListener('touchend', e=>{
+    if(!active || x0===null) return; active=false;
+    const dx = e.changedTouches[0].clientX - x0;
+    const dy = e.changedTouches[0].clientY - y0;
+    x0=null; y0=null;
+    // horizontal, long enough, and clearly not a vertical scroll
+    if(Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy)*1.8) return;
+    const i = TAB_ORDER.indexOf(state.tab);
+    const ni = dx < 0 ? i+1 : i-1;
+    if(ni < 0 || ni >= TAB_ORDER.length) return;
+    state.tab = TAB_ORDER[ni];
+    render();
+    // subtle slide-in feedback
+    const view = $('#view'+state.tab.charAt(0).toUpperCase()+state.tab.slice(1));
+    if(view){
+      view.style.animation='none'; void view.offsetWidth;
+      view.style.animation = (dx<0?'slideL':'slideR')+' .22s ease';
+    }
+  }, {passive:true});
+})();
 
 // ---------- add / edit habit modal ----------
 let pickedDays = new Set([1,2,3,4,5]);
