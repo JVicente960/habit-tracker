@@ -215,6 +215,9 @@ let loaded = false;
 function dateKey(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 const todayKey = dateKey(today);
 const $ = s => document.querySelector(s);
+// Escape user-controlled text before it goes into innerHTML (XSS defense)
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 function entriesFor(h){ return state.entries[h.id] || (state.entries[h.id]={}); }
 function todayEntry(h){ return entriesFor(h)[todayKey]; }
@@ -329,24 +332,24 @@ function renderToday(){
     const st = e?.status;
     const sk = streak(h);
     const evo = evolution(h);
-    const meta = `<div class="h-meta">${h.goal}${evo.goal?` ${pctBadge(evo.goal.pct)}`:''}${sk?` · <span class="streak">🔥 ${sk}-day streak</span>`:''}</div>`;
+    const meta = `<div class="h-meta">${esc(h.goal)}${evo.goal?` ${pctBadge(evo.goal.pct)}`:''}${sk?` · <span class="streak">🔥 ${sk}-day streak</span>`:''}</div>`;
     if(st){
       const label = st[0].toUpperCase()+st.slice(1);
       return `<div class="habit ${st}">
-        <div class="h-top"><div><div class="h-name">${h.name}</div>${meta}</div>
+        <div class="h-top"><div><div class="h-name">${esc(h.name)}</div>${meta}</div>
         <span class="badge ${st}">${label}</span></div>
-        ${e.note?`<div class="note-view">📝 ${e.note}</div>`:''}
+        ${e.note?`<div class="note-view">📝 ${esc(e.note)}</div>`:''}
         <button class="undo" onclick="undo('${h.id}')">Undo</button>
       </div>`;
     }
     return `<div class="habit">
-      <div class="h-top"><div><div class="h-name">${h.name}</div>${meta}</div></div>
+      <div class="h-top"><div><div class="h-name">${esc(h.name)}</div>${meta}</div></div>
       <div class="h-actions">
         <button class="btn b-done" onclick="mark('${h.id}','done')">✓ Done</button>
         <button class="btn b-fail" onclick="mark('${h.id}','failed')">✕ Failed</button>
       </div>
       <div class="note-row"><input class="note-input" placeholder="Add a note about today..."
-        value="${e?.note||''}" onchange="noteChange('${h.id}',this.value)"></div>
+        value="${esc(e?.note||'')}" onchange="noteChange('${h.id}',this.value)"></div>
     </div>`;
   }).join('');
 }
@@ -356,20 +359,20 @@ window.noteChange = (id,v)=>{ const h=state.habits.find(x=>x.id===id); setNote(h
 
 function renderHabits(){
   const hs = personHabits(state.current);
-  $('#viewHabits').innerHTML = `<div class="section-title">All habits — ${state.people.find(p=>p.id===state.current).name}</div>` +
+  $('#viewHabits').innerHTML = `<div class="section-title">All habits — ${esc(state.people.find(p=>p.id===state.current).name)}</div>` +
     (hs.length? hs.map(h=>{
       const evo = evolution(h);
       const evoHtml = (evo.goal||evo.days)? `
         <div class="evo-box">
-          ${evo.goal?`<div class="evo-line"><span>Goal: <b>${evo.goal.from}</b> → <b>${evo.goal.to}</b></span>${pctBadge(evo.goal.pct)}</div>`:''}
+          ${evo.goal?`<div class="evo-line"><span>Goal: <b>${esc(evo.goal.from)}</b> → <b>${esc(evo.goal.to)}</b></span>${pctBadge(evo.goal.pct)}</div>`:''}
           ${evo.days?`<div class="evo-line"><span>Days/week: <b>${evo.days.from}</b> → <b>${evo.days.to}</b></span>${pctBadge(evo.days.pct)}</div>`:''}
         </div>` : '';
       const log = (h.changes&&h.changes.length)? `<div class="change-log">${h.changes.slice(-4).reverse().map(c=>
-        `<div>${new Date(c.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})} — ${c.field==='goal'?'goal':'days/week'}: ${c.from} → ${c.to}</div>`).join('')}</div>` : '';
+        `<div>${new Date(c.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})} — ${c.field==='goal'?'goal':'days/week'}: ${esc(c.from)} → ${esc(c.to)}</div>`).join('')}</div>` : '';
       return `
     <div class="habit">
-      <div class="h-top"><div><div class="h-name">${h.name}</div>
-      <div class="h-meta">${h.goal} · ${completion(h)}% completion · since ${new Date(h.createdAt+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})}</div></div>
+      <div class="h-top"><div><div class="h-name">${esc(h.name)}</div>
+      <div class="h-meta">${esc(h.goal)} · ${completion(h)}% completion · since ${new Date(h.createdAt+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})}</div></div>
       <div style="display:flex;gap:6px">
         <button class="icon-btn" title="Edit" onclick="editHabit('${h.id}')">✎</button>
         <button class="icon-btn danger" title="Delete" onclick="deleteHabit('${h.id}')">🗑</button>
@@ -404,10 +407,10 @@ function renderHistory(){
     const label = k===todayKey ? 'Today' : d.toLocaleDateString('en-US',{weekday:'short', month:'short', day:'numeric'});
     return `<div class="section-title">${label}</div>` + byDate[k].map(({habit,entry})=>`
       <div class="habit ${entry.status}" style="padding:11px 14px">
-        <div class="h-top"><div><div class="h-name" style="font-size:14px">${habit.name}</div>
+        <div class="h-top"><div><div class="h-name" style="font-size:14px">${esc(habit.name)}</div>
         <div class="h-meta">${habit.goal}${entry.auto?' · not marked (auto)':''}</div></div>
         <span class="badge ${entry.status}">${STATUS_LABEL[entry.status]||entry.status}</span></div>
-        ${entry.note?`<div class="note-view">📝 ${entry.note}</div>`:''}
+        ${entry.note?`<div class="note-view">📝 ${esc(entry.note)}</div>`:''}
       </div>`).join('');
   }).join('') : `<div class="empty">Nothing recorded in this period${state.histFilter!=='all'?' with this filter':''}.</div>`;
   $('#viewHistory').innerHTML = `
@@ -424,7 +427,7 @@ function renderMetrics(){
   const hs = personHabits(state.current);
   const bars = hs.map(h=>{
     const c = completion(h);
-    return `<div class="bar-row"><div class="bar-head"><span>${h.name}</span><span style="color:var(--ink-soft)">${c}%</span></div>
+    return `<div class="bar-row"><div class="bar-head"><span>${esc(h.name)}</span><span style="color:var(--ink-soft)">${c}%</span></div>
       <div class="bar-track"><div class="bar-fill ${c<65?'low':''}" style="width:${c}%"></div></div></div>`;
   }).join('');
   const comps = state.people.map(p=>{
@@ -446,7 +449,7 @@ function renderMetrics(){
     <div class="section-title">📈 Your evolution</div>
     <div class="evo-hero">${evoRows.map(({h,e})=>`
       <div class="evo-hero-row">
-        <div><div class="evo-hero-name">${h.name}</div>
+        <div><div class="evo-hero-name">${esc(h.name)}</div>
         <div class="evo-hero-detail">${e.goal?`${e.goal.from} → <b>${e.goal.to}</b>`:''}${e.goal&&e.days?' · ':''}${e.days?`${e.days.from} → <b>${e.days.to}</b> days/wk`:''}</div></div>
         <div style="display:flex;gap:5px">${e.goal?pctBadge(e.goal.pct):''}${e.days?pctBadge(e.days.pct):''}</div>
       </div>`).join('')}</div>` : '';
