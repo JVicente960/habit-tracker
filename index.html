@@ -308,7 +308,7 @@ function render(){
 
 function renderPeople(){
   $('#peopleToggle').innerHTML = state.people.map(p=>
-    `<button class="person ${p.id===state.current?'active':''}" onclick="switchPerson('${p.id}')">${p.name}</button>`).join('');
+    `<button class="person ${p.id===state.current?'active':''}" data-act="switchPerson" data-id="${esc(p.id)}">${esc(p.name)}</button>`).join('');
 }
 window.switchPerson = id => { state.current=id; render(); };
 
@@ -339,17 +339,17 @@ function renderToday(){
         <div class="h-top"><div><div class="h-name">${esc(h.name)}</div>${meta}</div>
         <span class="badge ${st}">${label}</span></div>
         ${e.note?`<div class="note-view">📝 ${esc(e.note)}</div>`:''}
-        <button class="undo" onclick="undo('${h.id}')">Undo</button>
+        <button class="undo" data-act="undo" data-id="${esc(h.id)}">Undo</button>
       </div>`;
     }
     return `<div class="habit">
       <div class="h-top"><div><div class="h-name">${esc(h.name)}</div>${meta}</div></div>
       <div class="h-actions">
-        <button class="btn b-done" onclick="mark('${h.id}','done')">✓ Done</button>
-        <button class="btn b-fail" onclick="mark('${h.id}','failed')">✕ Failed</button>
+        <button class="btn b-done" data-act="mark" data-id="${esc(h.id)}" data-status="done">✓ Done</button>
+        <button class="btn b-fail" data-act="mark" data-id="${esc(h.id)}" data-status="failed">✕ Failed</button>
       </div>
       <div class="note-row"><input class="note-input" placeholder="Add a note about today..."
-        value="${esc(e?.note||'')}" onchange="noteChange('${h.id}',this.value)"></div>
+        value="${esc(e?.note||'')}" data-act="note" data-id="${esc(h.id)}"></div>
     </div>`;
   }).join('');
 }
@@ -374,8 +374,8 @@ function renderHabits(){
       <div class="h-top"><div><div class="h-name">${esc(h.name)}</div>
       <div class="h-meta">${esc(h.goal)} · ${completion(h)}% completion · since ${new Date(h.createdAt+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})}</div></div>
       <div style="display:flex;gap:6px">
-        <button class="icon-btn" title="Edit" onclick="editHabit('${h.id}')">✎</button>
-        <button class="icon-btn danger" title="Delete" onclick="deleteHabit('${h.id}')">🗑</button>
+        <button class="icon-btn" title="Edit" data-act="edit" data-id="${esc(h.id)}">✎</button>
+        <button class="icon-btn danger" title="Delete" data-act="delete" data-id="${esc(h.id)}">🗑</button>
       </div></div>
       ${evoHtml}${log}
       <div class="days">${DAYS.map((d,i)=>`<div class="day-dot ${h.days.includes(i)?'on':''}">${d[0]}</div>`).join('')}</div>
@@ -397,7 +397,7 @@ function renderHistory(){
     }
   }
   const dates = Object.keys(byDate).sort().reverse();
-  const chip = (id,label,active,fn)=>`<button class="chip ${active?'on':''}" onclick="${fn}('${id}')">${label}</button>`;
+  const chip = (id,label,active,fn)=>`<button class="chip ${active?'on':''}" data-act="${fn}" data-id="${esc(id)}">${esc(label)}</button>`;
   const periodChips = ['day','week','month'].map(p=>chip(p, p==='day'?'Today':p==='week'?'Last 7 days':'Last 30 days', state.histPeriod===p,'histPeriod')).join('');
   const filterChips = ['all','done','failed'].map(f=>chip(f, f==='all'?'All':STATUS_LABEL[f], state.histFilter===f,'histFilter')).join('');
   const counts = {done:0,failed:0};
@@ -465,6 +465,29 @@ function renderMetrics(){
 // ---------- tabs ----------
 const TAB_ORDER = ['today','habits','history','metrics'];
 document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{ state.tab=t.dataset.tab; render(); });
+
+// ---------- delegated event handling (no inline handlers => no HTML-injection surface) ----------
+const app = document.querySelector('.app');
+app.addEventListener('click', e=>{
+  const el = e.target.closest('[data-act]');
+  if(!el || !app.contains(el)) return;
+  const { act, id, status, idx } = el.dataset;
+  switch(act){
+    case 'switchPerson': switchPerson(id); break;
+    case 'mark':         mark(id, status); break;
+    case 'undo':         undo(id); break;
+    case 'edit':         editHabit(id); break;
+    case 'delete':       deleteHabit(id); break;
+    case 'histPeriod':   histPeriod(id); break;
+    case 'histFilter':   histFilter(id); break;
+    case 'toggleDay':    toggleDay(Number(idx)); break;
+  }
+});
+app.addEventListener('change', e=>{
+  const el = e.target.closest('[data-act="note"]');
+  if(!el) return;
+  noteChange(el.dataset.id, el.value);
+});
 
 // ---------- swipe left/right to change tabs (mobile only) ----------
 // Follows the finger in real time; snaps to the neighbouring tab on release.
@@ -547,7 +570,7 @@ let pickedDays = new Set([1,2,3,4,5]);
 let editingId = null;
 function renderDayPick(){
   $('#fDays').innerHTML = DAYS.map((d,i)=>
-    `<button class="${pickedDays.has(i)?'on':''}" onclick="toggleDay(${i})">${d}</button>`).join('');
+    `<button class="${pickedDays.has(i)?'on':''}" data-act="toggleDay" data-idx="${i}">${d}</button>`).join('');
 }
 window.toggleDay = i =>{ pickedDays.has(i)?pickedDays.delete(i):pickedDays.add(i); renderDayPick(); };
 function openModal(){
